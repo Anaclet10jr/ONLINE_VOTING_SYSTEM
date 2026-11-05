@@ -1,6 +1,7 @@
 <?php
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../includes/auth.php';
 require_role(['admin']);
+$pageTitle = 'Manage Voters';
 $active = 'voters';
 global $mysqli;
 
@@ -149,14 +150,23 @@ $pg = paginate($total, $perPage, $page);
 $voters = db_fetch_all($mysqli, "SELECT v.id, v.voter_card_no, v.is_verified, v.date_of_birth, v.phone, v.created_at, u.id AS user_id, u.full_name, u.email, u.status, r.name AS role_name, EXISTS (SELECT 1 FROM voter_elections ve WHERE ve.voter_id=v.id AND ve.voted_at IS NOT NULL) AS has_voted FROM voters v JOIN users u ON u.id=v.user_id JOIN roles r ON r.id=u.role_id $where ORDER BY v.id DESC LIMIT ? OFFSET ?", $types . 'ii', array_merge($params, [$perPage, $pg['offset']]));
 $unlinked = db_fetch_all($mysqli, "SELECT u.id, u.full_name, u.email FROM users u LEFT JOIN voters v ON v.user_id=u.id WHERE u.role_id=(SELECT id FROM roles WHERE name='voter') AND v.id IS NULL");
 $editId = isset($_GET['edit']) ? (int)$_GET['edit'] : 0;
+$editVoter = null;
+if ($editId > 0) {
+    $editVoter = db_fetch_one($mysqli, "SELECT v.*, u.full_name, u.email FROM voters v JOIN users u ON u.id=v.user_id WHERE v.id=?", "i", [$editId]);
+    if (!$editVoter) {
+        set_flash('danger', 'Voter not found.');
+        header('Location: /VOTING_SYSTEM/admin/voters.php');
+        exit;
+    }
+}
+require_once __DIR__ . '/../includes/header.php';
 ?>
 <div class="layout">
     <?php include __DIR__ . '/../includes/sidebar.php'; ?>
     <div class="layout__main">
 <?php
 if ($editId > 0) {
-    $ev = db_fetch_one($mysqli, "SELECT v.*, u.full_name, u.email FROM voters v JOIN users u ON u.id=v.user_id WHERE v.id=?", "i", [$editId]);
-    if (!$ev) { set_flash('danger','Voter not found.'); header('Location: /VOTING_SYSTEM/admin/voters.php'); exit; }
+    $ev = $editVoter;
 ?>
 <div class="card">
     <h2>Edit Voter #<?php echo (int)$ev['id']; ?> — <?php echo e($ev['full_name']); ?></h2>

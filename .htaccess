@@ -37,4 +37,5 @@ AddDefaultCharset utf-8
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteBase /VOTING_SYSTEM/
+    RewriteRule ^(config|includes|sql|logs|backups|tests|docs)(/|$) - [F,L]
 </IfModule>

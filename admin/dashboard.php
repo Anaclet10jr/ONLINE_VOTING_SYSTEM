@@ -1,6 +1,6 @@
 <?php
 // admin/dashboard.php
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../includes/auth.php';
 require_role(['admin']);
 $active = 'dashboard';
 
@@ -13,6 +13,8 @@ $stats = [
     'ballots'    => (int) db_fetch_one($mysqli, "SELECT COUNT(*) c FROM ballots")['c'],
     'logs'       => (int) db_fetch_one($mysqli, "SELECT COUNT(*) c FROM audit_logs")['c'],
 ];
+$pageTitle = 'Administrator Dashboard';
+require_once __DIR__ . '/../includes/header.php';
 ?>
 <div class="layout">
     <?php include __DIR__ . '/../includes/sidebar.php'; ?>

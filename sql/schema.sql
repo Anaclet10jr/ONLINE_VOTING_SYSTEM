@@ -336,7 +336,7 @@ INSERT INTO roles (name, description) VALUES
 -- !! CHANGE THIS PASSWORD IMMEDIATELY AFTER FIRST LOGIN !!
 INSERT INTO users (role_id, full_name, email, password_hash, status, mfa_enabled)
 SELECT r.id, 'System Administrator', 'admin@sovms.local',
-       '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.OGp6ELjrwJOmqVWC',
+       '$2y$10$KDzlw7P/BIoBS9kPZSAtHum/20nwUQWnSosSUY3BKP1cu737gHEoe',
        'active', 0
 FROM roles r WHERE r.name = 'admin';
 

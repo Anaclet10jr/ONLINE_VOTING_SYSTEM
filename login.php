@@ -1,6 +1,6 @@
 <?php
 // login.php
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/includes/auth.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST['csrf_token'] ?? null)) {
@@ -8,8 +8,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: /VOTING_SYSTEM/login.php');
         exit;
     }
-    $email = trim($_POST['email'] ?? '');
+    $emailInput = $_POST['email'] ?? '';
     $password = $_POST['password'] ?? '';
+    if (!is_string($emailInput) || !is_string($password)) {
+        set_flash('danger', 'Enter a valid email address and password.');
+        header('Location: /VOTING_SYSTEM/login.php');
+        exit;
+    }
+    $email = trim($emailInput);
     $res = login_user($email, $password);
     if (!$res['ok']) {
         set_flash('danger', $res['error']);
@@ -27,6 +33,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Location: ' . $dest);
     exit;
 }
+
+$pageTitle = 'Login';
+require_once __DIR__ . '/includes/header.php';
 ?>
 <section class="card" style="max-width:420px;margin:40px auto;">
     <h2>Login</h2>

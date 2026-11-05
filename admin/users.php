@@ -1,6 +1,7 @@
 <?php
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../includes/auth.php';
 require_role(['admin']);
+$pageTitle = 'Manage Users';
 $active = 'users';
 global $mysqli;
 
@@ -50,7 +51,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name = clean_string($_POST['full_name'] ?? '', 120);
         $roleName = $_POST['role'] ?? '';
         $status = $_POST['status'] ?? '';
-        $mfa = isset($_POST['mfa_enabled']) ? 1 : 0;
         $role = db_fetch_one($mysqli, "SELECT id FROM roles WHERE name = ?", "s", [$roleName]);
         $cu = current_user();
         if (!$uid || !$role || $name === '' ||
@@ -59,10 +59,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             set_flash('danger', 'Invalid data or self-demotion blocked.');
             header('Location: /VOTING_SYSTEM/admin/users.php'); exit;
         }
-        db_execute($mysqli, "UPDATE users SET full_name=?, role_id=?, status=?, mfa_enabled=? WHERE id=?", "sisii", [$name, $role['id'], $status, $mfa, $uid]);
+        db_execute($mysqli, "UPDATE users SET full_name=?, role_id=?, status=? WHERE id=?", "sisi", [$name, $role['id'], $status, $uid]);
         audit_log($cu['id'], 'user_update', 'user', $uid, "Updated user $uid");
         set_flash('success', 'User updated.');
         header('Location: /VOTING_SYSTEM/admin/users.php'); exit;
+    }
+    if ($action === 'reset_mfa') {
+        $uid = filter_var($_POST['user_id'] ?? null, FILTER_VALIDATE_INT);
+        if ($uid === false || $uid <= 0) {
+            set_flash('danger', 'Choose a valid user account.');
+            header('Location: /VOTING_SYSTEM/admin/users.php'); exit;
+        }
+        $reset = db_execute(
+            $mysqli,
+            "UPDATE users u
+             JOIN roles r ON r.id=u.role_id
+             SET u.mfa_enabled=0, u.mfa_secret=NULL
+             WHERE u.id=? AND r.name IN ('admin','manager') AND u.mfa_enabled=1",
+            "i",
+            [$uid]
+        );
+        if ($reset !== 1) {
+            set_flash('danger', 'MFA could not be reset. The user may not have MFA enabled.');
+            header('Location: /VOTING_SYSTEM/admin/users.php?edit=' . $uid); exit;
+        }
+        audit_log((int)current_user()['id'], 'mfa_admin_reset', 'user', (int)$uid, 'Admin reset MFA enrollment');
+        set_flash('success', 'MFA reset. The user can enroll again from Account Security.');
+        header('Location: /VOTING_SYSTEM/admin/users.php?edit=' . $uid); exit;
     }
     if ($action === 'resetpw') {
         $uid = (int)($_POST['user_id'] ?? 0);
@@ -104,14 +127,23 @@ $pg = paginate($total, $perPage, $page);
 $users = db_fetch_all($mysqli, "SELECT u.id, u.full_name, u.email, u.status, u.mfa_enabled, u.created_at, u.last_login_at, r.name AS role_name FROM users u JOIN roles r ON r.id=u.role_id $where ORDER BY u.id DESC LIMIT ? OFFSET ?", $types . 'ii', array_merge($params, [$perPage, $pg['offset']]));
 $roles = db_fetch_all($mysqli, "SELECT name FROM roles ORDER BY id");
 $editId = isset($_GET['edit']) ? (int)$_GET['edit'] : 0;
+$editUser = null;
+if ($editId > 0) {
+    $editUser = db_fetch_one($mysqli, "SELECT u.*, r.name AS role_name FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id=?", "i", [$editId]);
+    if (!$editUser) {
+        set_flash('danger', 'User not found.');
+        header('Location: /VOTING_SYSTEM/admin/users.php');
+        exit;
+    }
+}
+require_once __DIR__ . '/../includes/header.php';
 ?>
 <div class="layout">
     <?php include __DIR__ . '/../includes/sidebar.php'; ?>
     <div class="layout__main">
 <?php
 if ($editId > 0) {
-    $eu = db_fetch_one($mysqli, "SELECT u.*, r.name AS role_name FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id=?", "i", [$editId]);
-    if (!$eu) { set_flash('danger','User not found.'); header('Location: /VOTING_SYSTEM/admin/users.php'); exit; }
+    $eu = $editUser;
 ?>
 <div class="card">
     <h2>Edit User #<?php echo (int)$eu['id']; ?></h2>
@@ -123,10 +155,22 @@ if ($editId > 0) {
         <div class="form-group"><label>Email (read-only)</label><input class="form-control" value="<?php echo e($eu['email']); ?>" disabled></div>
         <div class="form-group"><label>Role</label><select class="form-control" name="role"><?php foreach ($roles as $r): ?><option value="<?php echo e($r['name']); ?>" <?php echo $r['name']===$eu['role_name']?'selected':''; ?>><?php echo e($r['name']); ?></option><?php endforeach; ?></select></div>
         <div class="form-group"><label>Status</label><select class="form-control" name="status"><?php foreach (['pending','active','suspended','locked'] as $s): ?><option value="<?php echo $s; ?>" <?php echo $s===$eu['status']?'selected':''; ?>><?php echo $s; ?></option><?php endforeach; ?></select></div>
-        <div class="form-group"><label><input type="checkbox" name="mfa_enabled" <?php echo $eu['mfa_enabled']?'checked':''; ?>> MFA enabled</label></div>
+        <p><strong>MFA:</strong> <?php echo (int)$eu['mfa_enabled'] === 1 ? 'Enabled' : 'Disabled'; ?>
+            <?php if ((int)$eu['id'] === (int)current_user()['id'] && in_array($eu['role_name'], ['admin', 'manager'], true)): ?>
+                — <a href="/VOTING_SYSTEM/account/security.php">Manage your MFA</a>
+            <?php endif; ?>
+        </p>
         <button class="btn btn--primary" type="submit">Save</button>
         <a class="btn" href="/VOTING_SYSTEM/admin/users.php">Cancel</a>
     </form>
+    <?php if ((int)$eu['mfa_enabled'] === 1 && in_array($eu['role_name'], ['admin', 'manager'], true)): ?>
+        <form method="post" style="margin-top:12px;" onsubmit="return confirm('Reset this user’s MFA enrollment? They will need to set it up again.');">
+            <?php echo csrf_field(); ?>
+            <input type="hidden" name="action" value="reset_mfa">
+            <input type="hidden" name="user_id" value="<?php echo (int)$eu['id']; ?>">
+            <button class="btn btn--danger" type="submit">Reset MFA enrollment</button>
+        </form>
+    <?php endif; ?>
     <hr>
     <h3>Reset Password</h3>
     <form method="post">

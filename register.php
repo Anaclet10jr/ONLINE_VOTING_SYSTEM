@@ -1,6 +1,6 @@
 <?php
 // register.php
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/includes/auth.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST['csrf_token'] ?? null)) {
@@ -12,6 +12,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = $_POST['email'] ?? '';
     $pw = $_POST['password'] ?? '';
     $pw2 = $_POST['password2'] ?? '';
+    if (!is_string($name) || !is_string($email) || !is_string($pw) || !is_string($pw2)) {
+        set_flash('danger', 'Enter valid registration details.');
+        header('Location: /VOTING_SYSTEM/register.php');
+        exit;
+    }
     if ($pw !== $pw2) {
         set_flash('danger', 'Passwords do not match.');
         header('Location: /VOTING_SYSTEM/register.php');
@@ -31,6 +36,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Location: /VOTING_SYSTEM/login.php');
     exit;
 }
+
+$pageTitle = 'Voter Registration';
+require_once __DIR__ . '/includes/header.php';
 ?>
 <section class="card" style="max-width:480px;margin:40px auto;">
     <h2>Voter Registration</h2>

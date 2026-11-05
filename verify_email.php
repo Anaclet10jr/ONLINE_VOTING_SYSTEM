@@ -8,7 +8,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    $token = trim($_POST['token'] ?? '');
+    $tokenInput = $_POST['token'] ?? '';
+    if (!is_string($tokenInput)) {
+        set_flash('danger', 'Enter a valid verification token.');
+        header('Location: /VOTING_SYSTEM/verify_email.php');
+        exit;
+    }
+    $token = trim($tokenInput);
     if (!preg_match('/\A[a-f0-9]{64}\z/', $token)) {
         set_flash('danger', 'Enter a valid verification token.');
         header('Location: /VOTING_SYSTEM/verify_email.php');

@@ -19,11 +19,13 @@ $role = $cu['role_name'];
             <a class="<?php echo $active==='candidates'?'active':''; ?>" href="/VOTING_SYSTEM/admin/candidates.php">Candidates</a>
             <a class="<?php echo $active==='reports'?'active':''; ?>" href="/VOTING_SYSTEM/admin/reports.php">Reports</a>
             <a class="<?php echo $active==='settings'?'active':''; ?>" href="/VOTING_SYSTEM/admin/settings.php">Settings</a>
+            <a class="<?php echo $active==='security'?'active':''; ?>" href="/VOTING_SYSTEM/account/security.php">Account Security</a>
         <?php elseif ($role === 'manager'): ?>
             <a class="<?php echo $active==='dashboard'?'active':''; ?>" href="/VOTING_SYSTEM/manager/dashboard.php">Dashboard</a>
             <a class="<?php echo $active==='elections'?'active':''; ?>" href="/VOTING_SYSTEM/manager/elections.php">My Elections</a>
             <a class="<?php echo $active==='candidates'?'active':''; ?>" href="/VOTING_SYSTEM/manager/candidates.php">Candidates</a>
             <a class="<?php echo $active==='monitoring'?'active':''; ?>" href="/VOTING_SYSTEM/manager/monitoring.php">Monitoring</a>
+            <a class="<?php echo $active==='security'?'active':''; ?>" href="/VOTING_SYSTEM/account/security.php">Account Security</a>
         <?php elseif ($role === 'voter'): ?>
             <a class="<?php echo $active==='dashboard'?'active':''; ?>" href="/VOTING_SYSTEM/voter/dashboard.php">Dashboard</a>
             <a class="<?php echo $active==='elections'?'active':''; ?>" href="/VOTING_SYSTEM/voter/elections.php">Elections</a>

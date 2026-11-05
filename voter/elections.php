@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $mysqli,
             "INSERT INTO ballots (election_id, election_candidate_id, receipt_code, cast_ip_hash) VALUES (?,?,?,?)",
             "iiss",
-            [$electionId, $electionCandidateId, $receiptCode, null]
+            [$electionId, $electionCandidateId, $receiptCode, $ipHash]
         );
         $updated = db_execute(
             $mysqli,
