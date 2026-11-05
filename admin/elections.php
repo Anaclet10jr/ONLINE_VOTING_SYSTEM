@@ -51,16 +51,87 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($endTime <= $startTime) {
             set_flash('danger', 'End must be after start.'); header('Location: /VOTING_SYSTEM/admin/elections.php?view=edit&id=' . $eid); exit;
         }
-        $existing = db_fetch_one($mysqli, "SELECT status FROM elections WHERE id=?", "i", [$eid]);
-        if (!$existing || !in_array($existing['status'], ['draft', 'scheduled'], true)) {
-            set_flash('danger', 'Only draft or scheduled elections can be edited.');
-            header('Location: /VOTING_SYSTEM/admin/elections.php'); exit;
-        }
         if (!in_array($mode, ['all_voters','selected'], true)) $mode = 'all_voters';
-        db_execute($mysqli, "UPDATE elections SET title=?, description=?, start_at=?, end_at=?, eligibility_mode=?, status=IF(status='draft','scheduled',status) WHERE id=?", "sssssi", [$title, $desc ?: null, $start, $end, $mode, $eid]);
+        $mysqli->begin_transaction();
+        try {
+            $existing = db_fetch_one($mysqli, "SELECT status FROM elections WHERE id=? FOR UPDATE", "i", [$eid]);
+            if (!$existing || !in_array($existing['status'], ['draft', 'scheduled'], true)) {
+                $mysqli->rollback();
+                set_flash('danger', 'Only draft or scheduled elections can be edited.');
+                header('Location: /VOTING_SYSTEM/admin/elections.php');
+                exit;
+            }
+            db_execute(
+                $mysqli,
+                "UPDATE elections
+                 SET title=?, description=?, start_at=?, end_at=?, eligibility_mode=?,
+                     status=IF(status='draft','scheduled',status)
+                 WHERE id=? AND status IN ('draft','scheduled')",
+                "sssssi",
+                [$title, $desc ?: null, $start, $end, $mode, $eid]
+            );
+            $mysqli->commit();
+        } catch (Throwable $t) {
+            $mysqli->rollback();
+            error_log('Election update failed: ' . $t->getMessage());
+            set_flash('danger', 'Unable to update the election. Please try again.');
+            header('Location: /VOTING_SYSTEM/admin/elections.php?view=edit&id=' . $eid);
+            exit;
+        }
         audit_log(current_user()['id'], 'election_update', 'election', $eid, "Updated election $eid");
         set_flash('success', 'Election updated.');
         header('Location: /VOTING_SYSTEM/admin/elections.php?view=manage&id=' . $eid); exit;
+    }
+    if ($action === 'delete') {
+        $eid = filter_var($_POST['election_id'] ?? null, FILTER_VALIDATE_INT);
+        if ($eid === false || $eid <= 0) {
+            set_flash('danger', 'Choose a valid election to delete.');
+            header('Location: /VOTING_SYSTEM/admin/elections.php');
+            exit;
+        }
+
+        $mysqli->begin_transaction();
+        try {
+            $electionToDelete = db_fetch_one(
+                $mysqli,
+                "SELECT id, title, status FROM elections WHERE id=? FOR UPDATE",
+                "i",
+                [$eid]
+            );
+            if (!$electionToDelete) {
+                throw new DomainException('Election not found.');
+            }
+            if ($electionToDelete['status'] === 'active') {
+                throw new DomainException('An active election cannot be deleted. Close or cancel it first.');
+            }
+
+            db_execute($mysqli, "DELETE FROM ballots WHERE election_id=?", "i", [$eid]);
+            $deleted = db_execute(
+                $mysqli,
+                "DELETE FROM elections WHERE id=? AND status<>'active'",
+                "i",
+                [$eid]
+            );
+            if ($deleted !== 1) {
+                throw new RuntimeException('Election was not deleted; it may have changed.');
+            }
+            $mysqli->commit();
+        } catch (DomainException $t) {
+            $mysqli->rollback();
+            set_flash('danger', $t->getMessage());
+            header('Location: /VOTING_SYSTEM/admin/elections.php');
+            exit;
+        } catch (Throwable $t) {
+            $mysqli->rollback();
+            error_log('Election deletion failed: ' . $t->getMessage());
+            set_flash('danger', 'Unable to delete the election. It may have related ballot records.');
+            header('Location: /VOTING_SYSTEM/admin/elections.php');
+            exit;
+        }
+        audit_log((int)current_user()['id'], 'election_delete', 'election', (int)$eid, 'Deleted election: ' . $electionToDelete['title']);
+        set_flash('success', 'Election deleted.');
+        header('Location: /VOTING_SYSTEM/admin/elections.php');
+        exit;
     }
     if ($action === 'transition') {
         $eid = (int)($_POST['election_id'] ?? 0);
@@ -247,6 +318,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $view = in_array($view, ['list', 'edit', 'manage'], true) ? $view : 'list';
 $electionId = (int)($_GET['id'] ?? 0);
 $election = null;
+$electionBallotCount = 0;
 $voters = [];
 $eligibleIds = [];
 $elections = [];
@@ -259,6 +331,13 @@ if ($view === 'edit' || $view === 'manage') {
         set_flash('danger', 'Election not found.');
         header('Location: /VOTING_SYSTEM/admin/elections.php'); exit;
     }
+    $ballotCountRow = db_fetch_one(
+        $mysqli,
+        "SELECT COUNT(*) AS ballot_count FROM ballots WHERE election_id=?",
+        "i",
+        [$electionId]
+    );
+    $electionBallotCount = (int)($ballotCountRow['ballot_count'] ?? 0);
 }
 
 if ($view === 'manage') {
@@ -408,6 +487,14 @@ require_once __DIR__ . '/../includes/header.php';
                 <?php if (in_array($election['status'], ['draft', 'scheduled'], true)): ?>
                     <a class="btn" href="/VOTING_SYSTEM/admin/elections.php?view=edit&id=<?php echo (int)$election['id']; ?>">Edit election</a>
                     <a class="btn" href="/VOTING_SYSTEM/admin/candidates.php?election_id=<?php echo (int)$election['id']; ?>">Manage nominations</a>
+                    <?php if ($electionBallotCount === 0): ?>
+                        <form method="post" style="display:inline;" onsubmit="return confirm('Permanently delete this election and its nominations, eligibility selections, and manager assignments?');">
+                            <?php echo csrf_field(); ?>
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="election_id" value="<?php echo (int)$election['id']; ?>">
+                            <button class="btn btn--danger" type="submit">Delete election</button>
+                        </form>
+                    <?php endif; ?>
                 <?php endif; ?>
                 <a class="btn" href="/VOTING_SYSTEM/admin/elections.php">All elections</a>
             </div>
@@ -481,6 +568,17 @@ require_once __DIR__ . '/../includes/header.php';
                 <?php endif; ?>
                 <?php if ($election['status'] === 'published'): ?>
                     <p>Results have been published. <a href="/VOTING_SYSTEM/results/index.php?election_id=<?php echo (int)$election['id']; ?>">View public results</a></p>
+                <?php endif; ?>
+                <?php if ($election['status'] !== 'active'): ?>
+                    <div class="flash flash--warning">
+                        Deleting this election permanently removes its ballots, results, nominations, eligibility records, and manager assignments. The deletion is recorded in the audit log and cannot be undone.
+                    </div>
+                    <form method="post" onsubmit="return confirm('Permanently delete this election and ALL associated ballots and results? This cannot be undone.');">
+                        <?php echo csrf_field(); ?>
+                        <input type="hidden" name="action" value="delete">
+                        <input type="hidden" name="election_id" value="<?php echo (int)$election['id']; ?>">
+                        <button class="btn btn--danger" type="submit">Permanently delete election</button>
+                    </form>
                 <?php endif; ?>
             </div>
             <div class="card">
@@ -584,7 +682,20 @@ require_once __DIR__ . '/../includes/header.php';
                                 <td><?php echo e($item['start_at']); ?><br>to <?php echo e($item['end_at']); ?></td>
                                 <td><?php echo (int)$item['candidate_count']; ?></td>
                                 <td><?php echo (int)$item['ballot_count']; ?></td>
-                                <td style="white-space:nowrap;"><a class="btn btn--sm" href="/VOTING_SYSTEM/admin/elections.php?view=manage&id=<?php echo (int)$item['id']; ?>">Manage</a></td>
+                                <td style="white-space:nowrap;">
+                                    <a class="btn btn--sm" href="/VOTING_SYSTEM/admin/elections.php?view=manage&id=<?php echo (int)$item['id']; ?>">Manage</a>
+                                    <?php if (in_array($item['status'], ['draft', 'scheduled'], true)): ?>
+                                        <a class="btn btn--sm" href="/VOTING_SYSTEM/admin/elections.php?view=edit&amp;id=<?php echo (int)$item['id']; ?>">Edit</a>
+                                    <?php endif; ?>
+                                    <?php if ($item['status'] !== 'active'): ?>
+                                        <form method="post" style="display:inline;" onsubmit="return confirm('Permanently delete this election and ALL associated ballots and results? This cannot be undone.');">
+                                            <?php echo csrf_field(); ?>
+                                            <input type="hidden" name="action" value="delete">
+                                            <input type="hidden" name="election_id" value="<?php echo (int)$item['id']; ?>">
+                                            <button class="btn btn--sm btn--danger" type="submit">Delete</button>
+                                        </form>
+                                    <?php endif; ?>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                         <?php if (!$elections): ?><tr><td colspan="8" style="text-align:center;color:var(--muted);">No elections yet.</td></tr><?php endif; ?>
