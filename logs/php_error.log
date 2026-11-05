@@ -1,0 +1,2 @@
+[04-Nov-2026 18:32:08 Asia/Manila] PHP Warning:  session_start(): Session cannot be started after headers have already been sent in C:\xampp\htdocs\VOTING_SYSTEM\config\security.php on line 69
+[04-Nov-2026 18:32:08 Asia/Manila] PHP Warning:  session_regenerate_id(): Session ID cannot be regenerated when there is no active session in C:\xampp\htdocs\VOTING_SYSTEM\includes\auth.php on line 129
