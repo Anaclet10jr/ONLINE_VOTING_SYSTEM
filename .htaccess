@@ -37,5 +37,7 @@ AddDefaultCharset utf-8
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteBase /VOTING_SYSTEM/
+    # Keep links generated for the XAMPP subfolder working when deployed at the domain root.
+    RewriteRule ^VOTING_SYSTEM/(.*)$ /$1 [L]
     RewriteRule ^(config|includes|sql|logs|backups|tests|docs)(/|$) - [F,L]
 </IfModule>
